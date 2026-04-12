@@ -1,0 +1,223 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API del Banco Central de Venezuela (BCV)",
+    "description": "Microservicios de API que extraen y exponen datos financieros clave en tiempo real del sitio web oficial del Banco Central de Venezuela (BCV). Las APIs devuelven datos estructurados en formato JSON.\n\n## Endpoints Disponibles\n- **Tasa de Cambio USD**: Tasa de cambio oficial del dólar estadounidense y fecha de vigencia.\n- **Índice de Inversión**: Último valor del Índice de Inversión y su fecha correspondiente.\n\n## Notas Importantes\n- Los datos se obtienen en tiempo real mediante web scraping del sitio oficial del BCV.\n- Las tasas numéricas se devuelven como cadenas para preservar el formato original (comas decimales).\n- Las fechas se devuelven en formato ISO 8601 (`yyyy-MM-dd`).",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Nunez Treasury C.A."
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Servidor de desarrollo local"
+    }
+  ],
+  "paths": {
+    "/api/v1/tasa-usd": {
+      "get": {
+        "summary": "Obtener tasa de cambio USD",
+        "description": "Extrae la tasa de cambio actual del dólar estadounidense (USD) y la fecha de vigencia desde la página principal del BCV (https://www.bcv.org.ve/).",
+        "operationId": "getTasaUsd",
+        "tags": ["Tipo de Cambio"],
+        "responses": {
+          "200": {
+            "description": "Tasa de cambio USD obtenida exitosamente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasaUsdResponse"
+                },
+                "example": {
+                  "tasa_usd": "477,14880000",
+                  "fecha_valor": "2026-04-13"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No se pudo acceder al sitio del BCV.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "No se pudo conectar con https://www.bcv.org.ve/",
+                  "status": 503
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor o estructura del sitio ha cambiado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "No se encontró el elemento #dolar en la página del BCV.",
+                  "status": 500
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/indice-inversion": {
+      "get": {
+        "summary": "Obtener Índice de Inversión",
+        "description": "Extrae la fecha y la tasa del Índice de Inversión más reciente desde la página de estadísticas del BCV (https://www.bcv.org.ve/estadisticas/indice-de-inversion).",
+        "operationId": "getIndiceInversion",
+        "tags": ["Índice de Inversión"],
+        "responses": {
+          "200": {
+            "description": "Índice de Inversión obtenido exitosamente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndiceInversionResponse"
+                },
+                "example": {
+                  "fecha_indice": "2026-04-10",
+                  "tasa_indice_nueva_expresion": "2,32926182"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No se pudo acceder al sitio del BCV.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "No se pudo conectar con https://www.bcv.org.ve/estadisticas/indice-de-inversion",
+                  "status": 503
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor o estructura del sitio ha cambiado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "No se encontró la tabla de índice de inversión en la página del BCV.",
+                  "status": 500
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Verifica que el servicio esté funcionando correctamente.",
+        "operationId": "getHealth",
+        "tags": ["Sistema"],
+        "responses": {
+          "200": {
+            "description": "Servicio funcionando correctamente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "service": "BCV API",
+                  "version": "1.0.0",
+                  "timestamp": "2026-04-11T20:30:00-04:00"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TasaUsdResponse": {
+        "type": "object",
+        "required": ["tasa_usd", "fecha_valor"],
+        "properties": {
+          "tasa_usd": {
+            "type": "string",
+            "description": "Tasa de cambio del dólar estadounidense. Formato numérico con coma decimal venezolana.",
+            "example": "477,14880000"
+          },
+          "fecha_valor": {
+            "type": "string",
+            "format": "date",
+            "description": "Fecha de vigencia de la tasa en formato yyyy-MM-dd.",
+            "example": "2026-04-13"
+          }
+        }
+      },
+      "IndiceInversionResponse": {
+        "type": "object",
+        "required": ["fecha_indice", "tasa_indice_nueva_expresion"],
+        "properties": {
+          "fecha_indice": {
+            "type": "string",
+            "format": "date",
+            "description": "Fecha del índice de inversión en formato yyyy-MM-dd.",
+            "example": "2026-04-10"
+          },
+          "tasa_indice_nueva_expresion": {
+            "type": "string",
+            "description": "Valor del índice de inversión (nueva expresión). Formato numérico con coma decimal.",
+            "example": "2,32926182"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "ok"
+          },
+          "service": {
+            "type": "string",
+            "example": "BCV API"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-04-11T20:30:00-04:00"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error", "status"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Descripción del error ocurrido."
+          },
+          "status": {
+            "type": "integer",
+            "description": "Código de estado HTTP."
+          }
+        }
+      }
+    }
+  }
+}
