@@ -6,18 +6,18 @@ Esta guía explica cómo conectar los microservicios locales con Power Automate 
 
 Al usar GitHub Actions, tus datos están disponibles públicamente y gratis en las siguientes URLs:
 
-- **Tasa USD:** `https://<usuario>.github.io/<repositorio>/api/v1/tasa-usd.json`
-- **Índice de Inversión:** `https://<usuario>.github.io/<repositorio>/api/v1/indice-inversion.json`
+- **Tasa USD:** `https://gerardonm.github.io/API_BCV/api/v1/tasa-usd.json`
+- **Índice de Inversión:** `https://gerardonm.github.io/API_BCV/api/v1/indice-inversion.json`
 
 > [!NOTE]
-> Reemplaza `<usuario>` y `<repositorio>` con tus datos de GitHub tras activar **GitHub Pages** en `Settings > Pages > Source: Deploy from a branch`.
+> Reemplaza `API_BCV` si decides nombrar el repositorio de otra forma. Asegúrate de activar **GitHub Pages** en `Settings > Pages > Source: Deploy from a branch`.
 
 ## 2. Configuración del Conector HTTP
 
 ### Endpoint: Tasa USD
 
 - **Método:** GET
-- **URL:** `https://<usuario>.github.io/<repositorio>/api/v1/tasa-usd.json`
+- **URL:** `https://gerardonm.github.io/API_BCV/api/v1/tasa-usd.json`
 - **Esquema JSON (Copia y pega en el paso "Analizar JSON"):**
 
 ```json
@@ -33,7 +33,7 @@ Al usar GitHub Actions, tus datos están disponibles públicamente y gratis en l
 ### Endpoint: Índice de Inversión
 
 - **Método:** GET
-- **URL:** `https://<usuario>.github.io/<repositorio>/api/v1/indice-inversion.json`
+- **URL:** `https://gerardonm.github.io/API_BCV/api/v1/indice-inversion.json`
 - **Esquema JSON (Copia y pega en el paso "Analizar JSON"):**
 
 ```json

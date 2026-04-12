@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from scraper import scrape_tasa_usd, scrape_indice_inversion
+from scraper import scrape_tasa_usd, scrape_indice_inversion, scrape_otras_monedas
 
 # Configurar logging
 logging.basicConfig(
@@ -37,6 +37,13 @@ def main():
         save_json(indice_data, "api/v1/indice-inversion.json")
     except Exception as e:
         logger.error(f"❌ Error al obtener índice de inversión: {e}")
+
+    # 3. Otras Monedas
+    try:
+        monedas_data = scrape_otras_monedas()
+        save_json(monedas_data, "api/v1/otras-monedas.json")
+    except Exception as e:
+        logger.error(f"❌ Error al obtener otras monedas: {e}")
 
 if __name__ == "__main__":
     main()

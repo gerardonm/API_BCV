@@ -1,0 +1,149 @@
+{
+  "fecha_valor": "2026-04-13",
+  "tasas": [
+    {
+      "codigo_moneda": "PTR",
+      "tasa_bs": "28628.928"
+    },
+    {
+      "codigo_moneda": "EUR",
+      "tasa_bs": "560.04863251"
+    },
+    {
+      "codigo_moneda": "USD",
+      "tasa_bs": "477.1488"
+    },
+    {
+      "codigo_moneda": "GBP",
+      "tasa_bs": "643.05343776"
+    },
+    {
+      "codigo_moneda": "AUD",
+      "tasa_bs": "338.16012604"
+    },
+    {
+      "codigo_moneda": "CAD",
+      "tasa_bs": "345.06736478"
+    },
+    {
+      "codigo_moneda": "DEG",
+      "tasa_bs": "652.12625518"
+    },
+    {
+      "codigo_moneda": "CNY",
+      "tasa_bs": "69.88835996"
+    },
+    {
+      "codigo_moneda": "RUB",
+      "tasa_bs": "6.1904427"
+    },
+    {
+      "codigo_moneda": "TRY",
+      "tasa_bs": "10.68264309"
+    },
+    {
+      "codigo_moneda": "INR",
+      "tasa_bs": "5.13621029"
+    },
+    {
+      "codigo_moneda": "CHF",
+      "tasa_bs": "605.54183534"
+    },
+    {
+      "codigo_moneda": "JPY",
+      "tasa_bs": "2.99967183"
+    },
+    {
+      "codigo_moneda": "ARS",
+      "tasa_bs": "0.34764939"
+    },
+    {
+      "codigo_moneda": "BRL",
+      "tasa_bs": "95.15001894"
+    },
+    {
+      "codigo_moneda": "CLP",
+      "tasa_bs": "0.53558666"
+    },
+    {
+      "codigo_moneda": "COP",
+      "tasa_bs": "0.13167084"
+    },
+    {
+      "codigo_moneda": "UYU",
+      "tasa_bs": "11.82847368"
+    },
+    {
+      "codigo_moneda": "PEN",
+      "tasa_bs": "141.12653061"
+    },
+    {
+      "codigo_moneda": "BOB",
+      "tasa_bs": "70.83142331"
+    },
+    {
+      "codigo_moneda": "MXP",
+      "tasa_bs": "27.63996987"
+    },
+    {
+      "codigo_moneda": "CUC",
+      "tasa_bs": "477.1488"
+    },
+    {
+      "codigo_moneda": "NIO",
+      "tasa_bs": "13.12395103"
+    },
+    {
+      "codigo_moneda": "CZK",
+      "tasa_bs": "22.98858637"
+    },
+    {
+      "codigo_moneda": "DKK",
+      "tasa_bs": "74.9502137"
+    },
+    {
+      "codigo_moneda": "NOK",
+      "tasa_bs": "50.26799127"
+    },
+    {
+      "codigo_moneda": "SEK",
+      "tasa_bs": "51.64126896"
+    },
+    {
+      "codigo_moneda": "KRW",
+      "tasa_bs": "0.32196709"
+    },
+    {
+      "codigo_moneda": "ILS",
+      "tasa_bs": "157.28797468"
+    },
+    {
+      "codigo_moneda": "HKD",
+      "tasa_bs": "60.92306042"
+    },
+    {
+      "codigo_moneda": "CNH",
+      "tasa_bs": "69.93835032"
+    },
+    {
+      "codigo_moneda": "TWD",
+      "tasa_bs": "15.04489358"
+    },
+    {
+      "codigo_moneda": "JOD",
+      "tasa_bs": "673.93898305"
+    },
+    {
+      "codigo_moneda": "DOP",
+      "tasa_bs": "8.0166129"
+    },
+    {
+      "codigo_moneda": "TTD",
+      "tasa_bs": "71.08679717"
+    },
+    {
+      "codigo_moneda": "ANG",
+      "tasa_bs": "273.57880855"
+    }
+  ]
+}

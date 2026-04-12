@@ -7,6 +7,7 @@ en tiempo real del sitio web oficial del BCV.
 Endpoints:
     GET /api/v1/tasa-usd          — Tasa de cambio USD y fecha de vigencia
     GET /api/v1/indice-inversion   — Índice de Inversión más reciente
+    GET /api/v1/otras-monedas      — Tasas de Otras Monedas (desde Excel BCV)
     GET /api/v1/health             — Health check del servicio
     GET /api/docs                  — Documentación Swagger UI
 """
@@ -19,7 +20,7 @@ from datetime import datetime
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
-from scraper import scrape_tasa_usd, scrape_indice_inversion
+from scraper import scrape_tasa_usd, scrape_indice_inversion, scrape_otras_monedas
 
 # ──────────────────────────────────────────────
 # Configuración
@@ -117,6 +118,46 @@ def get_indice_inversion():
         }), 500
 
 
+@app.route("/api/v1/otras-monedas", methods=["GET"])
+def get_otras_monedas():
+    """
+    Obtiene las tasas de cambio de Otras Monedas desde el Excel del BCV.
+
+    Returns:
+        JSON con fecha_valor y lista de tasas por moneda,
+        o un error con código HTTP apropiado.
+    """
+    try:
+        logger.info("📊 Solicitud recibida: GET /api/v1/otras-monedas")
+        data = scrape_otras_monedas()
+        logger.info(
+            "✅ Otras Monedas obtenidas exitosamente: %d tasas",
+            len(data.get("tasas", [])),
+        )
+        return jsonify(data), 200
+
+    except (ConnectionError, TimeoutError) as exc:
+        logger.error("🔴 Error de conexión al obtener Otras Monedas: %s", exc)
+        return jsonify({
+            "error": str(exc),
+            "status": 503,
+        }), 503
+
+    except ValueError as exc:
+        logger.error("🟡 Error de parsing al obtener Otras Monedas: %s", exc)
+        return jsonify({
+            "error": str(exc),
+            "status": 500,
+        }), 500
+
+    except Exception as exc:
+        logger.exception("🔴 Error inesperado al obtener Otras Monedas: %s", exc)
+        return jsonify({
+            "error": f"Error interno del servidor: {exc}",
+            "status": 500,
+        }), 500
+
+
 @app.route("/api/v1/health", methods=["GET"])
 def health_check():
     """
@@ -208,6 +249,7 @@ def index():
         "endpoints": {
             "tasa_usd": "/api/v1/tasa-usd",
             "indice_inversion": "/api/v1/indice-inversion",
+            "otras_monedas": "/api/v1/otras-monedas",
             "health": "/api/v1/health",
             "docs": "/api/docs",
         },

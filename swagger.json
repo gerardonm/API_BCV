@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "API del Banco Central de Venezuela (BCV)",
-    "description": "Microservicios de API que extraen y exponen datos financieros clave en tiempo real del sitio web oficial del Banco Central de Venezuela (BCV). Las APIs devuelven datos estructurados en formato JSON.\n\n## Endpoints Disponibles\n- **Tasa de Cambio USD**: Tasa de cambio oficial del dólar estadounidense y fecha de vigencia.\n- **Índice de Inversión**: Último valor del Índice de Inversión y su fecha correspondiente.\n\n## Notas Importantes\n- Los datos se obtienen en tiempo real mediante web scraping del sitio oficial del BCV.\n- Las tasas numéricas se devuelven como cadenas para preservar el formato original (comas decimales).\n- Las fechas se devuelven en formato ISO 8601 (`yyyy-MM-dd`).",
-    "version": "1.0.0",
+    "description": "Microservicios de API que extraen y exponen datos financieros clave en tiempo real del sitio web oficial del Banco Central de Venezuela (BCV). Las APIs devuelven datos estructurados en formato JSON.\n\n## Endpoints Disponibles\n- **Tasa de Cambio USD**: Tasa de cambio oficial del dólar estadounidense y fecha de vigencia.\n- **Índice de Inversión**: Último valor del Índice de Inversión y su fecha correspondiente.\n- **Otras Monedas**: Tasas de cambio de múltiples monedas extranjeras desde el Excel oficial del BCV.\n\n## Notas Importantes\n- Los datos se obtienen en tiempo real mediante web scraping del sitio oficial del BCV.\n- Las tasas numéricas se devuelven como cadenas para preservar el formato original (comas decimales).\n- Las fechas se devuelven en formato ISO 8601 (`yyyy-MM-dd`).",
+    "version": "1.1.0",
     "contact": {
       "name": "Nunez Treasury C.A."
     }
@@ -119,6 +119,71 @@
         }
       }
     },
+    "/api/v1/otras-monedas": {
+      "get": {
+        "summary": "Obtener tasas de Otras Monedas",
+        "description": "Descarga y procesa en memoria el archivo Excel oficial del BCV con las tasas de cambio de múltiples monedas extranjeras. Fuente: https://www.bcv.org.ve/estadisticas/otras-monedas",
+        "operationId": "getOtrasMonedas",
+        "tags": ["Otras Monedas"],
+        "responses": {
+          "200": {
+            "description": "Tasas de Otras Monedas obtenidas exitosamente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OtrasMonedasResponse"
+                },
+                "example": {
+                  "fecha_valor": "2026-04-13",
+                  "tasas": [
+                    {
+                      "codigo_moneda": "EUR",
+                      "tasa_bs": "560.048633"
+                    },
+                    {
+                      "codigo_moneda": "CNY",
+                      "tasa_bs": "69.88836"
+                    },
+                    {
+                      "codigo_moneda": "GBP",
+                      "tasa_bs": "643.053438"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No se pudo acceder al sitio del BCV o descargar el Excel.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "Timeout al descargar el Excel desde https://www.bcv.org.ve/...",
+                  "status": 503
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno o el formato del Excel ha cambiado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "No se encontró el enlace de descarga del archivo Excel.",
+                  "status": 500
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "summary": "Health Check",
@@ -136,7 +201,7 @@
                 "example": {
                   "status": "ok",
                   "service": "BCV API",
-                  "version": "1.0.0",
+                  "version": "1.1.0",
                   "timestamp": "2026-04-11T20:30:00-04:00"
                 }
               }
@@ -182,6 +247,41 @@
           }
         }
       },
+      "OtrasMonedasResponse": {
+        "type": "object",
+        "required": ["fecha_valor", "tasas"],
+        "properties": {
+          "fecha_valor": {
+            "type": "string",
+            "format": "date",
+            "description": "Fecha de vigencia de las tasas en formato yyyy-MM-dd.",
+            "example": "2026-04-13"
+          },
+          "tasas": {
+            "type": "array",
+            "description": "Lista de tasas de cambio por moneda.",
+            "items": {
+              "$ref": "#/components/schemas/TasaMoneda"
+            }
+          }
+        }
+      },
+      "TasaMoneda": {
+        "type": "object",
+        "required": ["codigo_moneda", "tasa_bs"],
+        "properties": {
+          "codigo_moneda": {
+            "type": "string",
+            "description": "Código ISO 4217 de la moneda (3 letras).",
+            "example": "EUR"
+          },
+          "tasa_bs": {
+            "type": "string",
+            "description": "Tasa de cambio en Bolívares por unidad de moneda extranjera (Venta ASK).",
+            "example": "560.048633"
+          }
+        }
+      },
       "HealthResponse": {
         "type": "object",
         "properties": {
@@ -195,7 +295,7 @@
           },
           "version": {
             "type": "string",
-            "example": "1.0.0"
+            "example": "1.1.0"
           },
           "timestamp": {
             "type": "string",

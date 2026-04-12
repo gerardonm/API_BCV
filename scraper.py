@@ -4,12 +4,16 @@ scraper.py — Módulo de Web Scraping para el Banco Central de Venezuela (BCV)
 Extrae datos financieros en tiempo real del sitio web oficial del BCV:
 - Tasa de cambio USD y fecha de vigencia
 - Índice de Inversión (Base=28/10/2019) y fecha
+- Tasas de Otras Monedas (descarga y procesamiento de Excel en memoria)
 """
 
+import io
 import re
 import logging
 import requests
+import pandas as pd
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 BCV_HOME_URL = "https://www.bcv.org.ve/"
 BCV_INDICE_URL = "https://www.bcv.org.ve/estadisticas/indice-de-inversion"
+BCV_OTRAS_MONEDAS_URL = "https://www.bcv.org.ve/estadisticas/otras-monedas"
 
 REQUEST_TIMEOUT = 15  # segundos
 
@@ -314,3 +319,195 @@ def scrape_indice_inversion() -> dict:
         "fecha_indice": fecha_indice,
         "tasa_indice_nueva_expresion": tasa_raw,
     }
+
+
+def scrape_otras_monedas() -> dict:
+    """
+    Extrae las tasas de cambio de "Otras Monedas" desde el archivo Excel del BCV.
+
+    Proceso:
+        1. Scrapea la página para encontrar el enlace de descarga del Excel.
+        2. Descarga el archivo Excel en memoria (BytesIO).
+        3. Lee la primera hoja con pandas (fecha más reciente).
+        4. Extrae la "Fecha Valor" de las celdas de encabezado.
+        5. Limpia y transforma los datos de monedas.
+
+    Fuente: https://www.bcv.org.ve/estadisticas/otras-monedas
+
+    Returns:
+        dict con las claves:
+            - "fecha_valor": str — Fecha en formato yyyy-MM-dd
+            - "tasas": list[dict] — Lista de monedas con codigo_moneda y tasa_bs
+
+    Raises:
+        ConnectionError: Si no se puede acceder al sitio del BCV.
+        TimeoutError: Si la solicitud excede el tiempo límite.
+        ValueError: Si no se encuentra el Excel o los datos no son válidos.
+    """
+    logger.info(
+        "Iniciando scraping de Otras Monedas desde %s", BCV_OTRAS_MONEDAS_URL
+    )
+
+    # ── Paso 1: Encontrar el enlace de descarga del Excel ──
+    soup = _fetch_page(BCV_OTRAS_MONEDAS_URL)
+
+    excel_link = None
+    for a_tag in soup.find_all("a", href=True):
+        href = a_tag["href"]
+        if re.search(r"\.xlsx?$", href, re.IGNORECASE):
+            excel_link = href
+            break
+
+    if not excel_link:
+        raise ValueError(
+            "No se encontró el enlace de descarga del archivo Excel "
+            "en la página de Otras Monedas del BCV."
+        )
+
+    # Construir URL absoluta si es relativa
+    if excel_link.startswith("/"):
+        excel_link = urljoin(BCV_HOME_URL, excel_link)
+
+    logger.info("Enlace del Excel encontrado: %s", excel_link)
+
+    # ── Paso 2: Descargar el archivo en memoria ──
+    try:
+        response = requests.get(
+            excel_link, headers=HEADERS, timeout=REQUEST_TIMEOUT
+        )
+    except requests.exceptions.Timeout:
+        raise TimeoutError(
+            f"Timeout al descargar el Excel desde {excel_link} "
+            f"(>{REQUEST_TIMEOUT}s)"
+        )
+    except requests.exceptions.RequestException as exc:
+        raise ConnectionError(
+            f"Error al descargar el Excel desde {excel_link}: {exc}"
+        ) from exc
+
+    if response.status_code != 200:
+        raise ValueError(
+            f"Respuesta HTTP {response.status_code} al descargar el Excel "
+            f"desde {excel_link}"
+        )
+
+    excel_bytes = io.BytesIO(response.content)
+    logger.info("Excel descargado en memoria (%d bytes)", len(response.content))
+
+    # ── Paso 3: Leer la primera hoja con pandas ──
+    try:
+        # Determinar el engine según la extensión
+        engine = "xlrd" if excel_link.lower().endswith(".xls") else "openpyxl"
+        df_raw = pd.read_excel(
+            excel_bytes, sheet_name=0, header=None, engine=engine
+        )
+    except Exception as exc:
+        raise ValueError(
+            f"Error al leer el archivo Excel: {exc}"
+        ) from exc
+
+    logger.info(
+        "Excel leído: %d filas x %d columnas", len(df_raw), len(df_raw.columns)
+    )
+
+    # ── Paso 4: Extraer la Fecha Valor ──
+    # La fila 4 (índice 4) contiene: "Fecha Valor:  DD/MM/YYYY" en la columna 3
+    fecha_valor = None
+
+    for row_idx in range(min(10, len(df_raw))):
+        for col_idx in range(len(df_raw.columns)):
+            cell = df_raw.iloc[row_idx, col_idx]
+            if isinstance(cell, str) and "fecha valor" in cell.lower():
+                # Extraer la fecha del texto: "Fecha Valor:  13/04/2026"
+                match = re.search(r"(\d{2})/(\d{2})/(\d{4})", cell)
+                if match:
+                    dia = match.group(1)
+                    mes = match.group(2)
+                    anio = match.group(3)
+                    fecha_valor = f"{anio}-{mes}-{dia}"
+                    break
+        if fecha_valor:
+            break
+
+    if not fecha_valor:
+        raise ValueError(
+            "No se encontró la 'Fecha Valor' en las primeras filas del Excel."
+        )
+
+    logger.info("Fecha Valor extraída: %s", fecha_valor)
+
+    # ── Paso 5: Encontrar la fila de encabezados de datos ──
+    # Buscar la fila que contiene "Moneda" o los encabezados de la tabla
+    # En el Excel del BCV, la estructura es:
+    #   Col 1 = Código moneda, Col 2 = País,
+    #   Col 3 = Compra M.E./US$, Col 4 = Venta M.E./US$,
+    #   Col 5 = Compra Bs./M.E., Col 6 = Venta Bs./M.E.
+    # Los datos comienzan típicamente en la fila 10 (índice 10)
+
+    # Encontrar dónde empiezan los datos de monedas
+    data_start = None
+    for i in range(len(df_raw)):
+        cell_1 = df_raw.iloc[i, 1] if pd.notna(df_raw.iloc[i, 1]) else ""
+        # Los datos de monedas tienen códigos de 3 letras en la columna 1
+        if isinstance(cell_1, str) and re.match(r"^[A-Z]{3}$", cell_1.strip()):
+            data_start = i
+            break
+
+    if data_start is None:
+        raise ValueError(
+            "No se encontraron datos de monedas en el archivo Excel. "
+            "Es posible que el formato haya cambiado."
+        )
+
+    logger.info("Datos de monedas encontrados a partir de la fila %d", data_start)
+
+    # ── Paso 6: Extraer y limpiar datos de monedas ──
+    tasas = []
+    for i in range(data_start, len(df_raw)):
+        codigo = df_raw.iloc[i, 1]
+
+        # Verificar que sea un código de moneda válido (3 letras mayúsculas)
+        if not isinstance(codigo, str) or not re.match(
+            r"^[A-Z]{3}$", codigo.strip()
+        ):
+            # Si encontramos "NOTAS:" u otra cosa, terminamos
+            if isinstance(codigo, str) and "nota" in codigo.lower():
+                break
+            continue
+
+        codigo = codigo.strip()
+
+        # Obtener la tasa Bs./M.E. (columna Venta ASK = última columna útil)
+        # Col 5 = Compra (BID) Bs./M.E., Col 6 = Venta (ASK) Bs./M.E.
+        tasa_bs_venta = df_raw.iloc[i, 6]  # Venta ASK en Bs./M.E.
+
+        # Si la tasa de venta no es numérica, intentar con la de compra
+        if pd.isna(tasa_bs_venta) or str(tasa_bs_venta).strip() == "----------------":
+            tasa_bs_compra = df_raw.iloc[i, 5]
+            if pd.notna(tasa_bs_compra) and str(tasa_bs_compra).strip() != "----------------":
+                tasa_bs = str(tasa_bs_compra)
+            else:
+                continue  # Saltar monedas sin tasa en Bs.
+        else:
+            tasa_bs = str(tasa_bs_venta)
+
+        # Limpiar y formatear la tasa
+        tasa_bs = tasa_bs.strip()
+
+        tasas.append({
+            "codigo_moneda": codigo,
+            "tasa_bs": tasa_bs,
+        })
+
+    if not tasas:
+        raise ValueError(
+            "No se pudieron extraer tasas de monedas del archivo Excel."
+        )
+
+    logger.info("Se extrajeron %d tasas de monedas", len(tasas))
+
+    return {
+        "fecha_valor": fecha_valor,
+        "tasas": tasas,
+    }
+
