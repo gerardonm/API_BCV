@@ -9,6 +9,7 @@ Extrae datos financieros en tiempo real del sitio web oficial del BCV:
 
 import io
 import re
+import time
 import logging
 import requests
 import pandas as pd
@@ -25,18 +26,31 @@ BCV_HOME_URL = "https://www.bcv.org.ve/"
 BCV_INDICE_URL = "https://www.bcv.org.ve/estadisticas/indice-de-inversion"
 BCV_OTRAS_MONEDAS_URL = "https://www.bcv.org.ve/estadisticas/otras-monedas"
 
-REQUEST_TIMEOUT = 15  # segundos
+REQUEST_TIMEOUT = 30  # segundos (aumentado para conexiones desde la nube)
+MAX_RETRIES = 3       # número de reintentos ante fallas de conexión
+RETRY_BASE_DELAY = 2  # segundos base entre reintentos (backoff exponencial)
 
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
+        "Chrome/125.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "es-VE,es;q=0.9,en;q=0.5",
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;"
+        "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+    ),
+    "Accept-Language": "es-VE,es;q=0.9,en-US;q=0.8,en;q=0.7",
     "Accept-Encoding": "gzip, deflate, br",
     "Connection": "keep-alive",
+    "Referer": "https://www.bcv.org.ve/",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+    "Cache-Control": "max-age=0",
+    "DNT": "1",
 }
 
 # Diccionario de meses en español → número
@@ -60,9 +74,25 @@ MESES_ES = {
 # Funciones auxiliares
 # ──────────────────────────────────────────────
 
+def _create_session() -> requests.Session:
+    """
+    Crea una sesión HTTP que persiste cookies entre peticiones.
+    Esto es crucial para superar la verificación anti-bot del BCV
+    (Imperva/Incapsula), que requiere que los cookies de la primera
+    visita se reenvíen en peticiones subsiguientes.
+    """
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    return session
+
+
 def _fetch_page(url: str) -> BeautifulSoup:
     """
-    Descarga y parsea una página web del BCV.
+    Descarga y parsea una página web del BCV con reintentos automáticos.
+
+    Implementa una estrategia de backoff exponencial para manejar
+    bloqueos temporales del firewall del BCV (Imperva/Incapsula) y
+    errores de conexión desde servidores en la nube.
 
     Args:
         url: URL de la página a descargar.
@@ -71,29 +101,82 @@ def _fetch_page(url: str) -> BeautifulSoup:
         Objeto BeautifulSoup con el HTML parseado.
 
     Raises:
-        ConnectionError: Si no se puede conectar al sitio.
+        ConnectionError: Si no se puede conectar tras MAX_RETRIES intentos.
         TimeoutError: Si la conexión excede el tiempo límite.
         ValueError: Si la respuesta HTTP no es exitosa.
     """
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-    except requests.exceptions.Timeout:
-        logger.error("Timeout al conectar con %s", url)
-        raise TimeoutError(f"Timeout al conectar con {url} (>{REQUEST_TIMEOUT}s)")
-    except requests.exceptions.ConnectionError as exc:
-        logger.error("Error de conexión con %s: %s", url, exc)
-        raise ConnectionError(f"No se pudo conectar con {url}") from exc
-    except requests.exceptions.RequestException as exc:
-        logger.error("Error HTTP al solicitar %s: %s", url, exc)
-        raise ConnectionError(f"Error al solicitar {url}: {exc}") from exc
+    session = _create_session()
+    last_exception = None
 
-    if response.status_code != 200:
-        logger.error("Respuesta HTTP %d de %s", response.status_code, url)
-        raise ValueError(
-            f"Respuesta HTTP {response.status_code} de {url}"
-        )
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            logger.info(
+                "Intento %d/%d — Conectando a %s", attempt, MAX_RETRIES, url
+            )
+            response = session.get(url, timeout=REQUEST_TIMEOUT)
 
-    return BeautifulSoup(response.text, "lxml")
+            if response.status_code == 200:
+                logger.info("Conexión exitosa a %s (intento %d)", url, attempt)
+                return BeautifulSoup(response.text, "lxml")
+
+            # Códigos 403/503 pueden ser bloqueos temporales del firewall
+            if response.status_code in (403, 503) and attempt < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                logger.warning(
+                    "HTTP %d de %s — Reintentando en %ds (intento %d/%d)",
+                    response.status_code, url, delay, attempt, MAX_RETRIES,
+                )
+                time.sleep(delay)
+                continue
+
+            # Error HTTP no recuperable
+            logger.error("Respuesta HTTP %d de %s", response.status_code, url)
+            raise ValueError(
+                f"Respuesta HTTP {response.status_code} de {url}"
+            )
+
+        except requests.exceptions.Timeout:
+            last_exception = TimeoutError(
+                f"Timeout al conectar con {url} (>{REQUEST_TIMEOUT}s)"
+            )
+            if attempt < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                logger.warning(
+                    "Timeout en %s — Reintentando en %ds (intento %d/%d)",
+                    url, delay, attempt, MAX_RETRIES,
+                )
+                time.sleep(delay)
+                continue
+            logger.error("Timeout al conectar con %s tras %d intentos", url, MAX_RETRIES)
+            raise last_exception
+
+        except requests.exceptions.ConnectionError as exc:
+            last_exception = ConnectionError(
+                f"No se pudo conectar con {url}"
+            )
+            last_exception.__cause__ = exc
+            if attempt < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                logger.warning(
+                    "Error de conexión con %s — Reintentando en %ds (intento %d/%d)",
+                    url, delay, attempt, MAX_RETRIES,
+                )
+                time.sleep(delay)
+                continue
+            logger.error(
+                "Error de conexión con %s tras %d intentos: %s",
+                url, MAX_RETRIES, exc,
+            )
+            raise last_exception from exc
+
+        except requests.exceptions.RequestException as exc:
+            logger.error("Error HTTP al solicitar %s: %s", url, exc)
+            raise ConnectionError(f"Error al solicitar {url}: {exc}") from exc
+
+    # Fallback: si se agotaron los reintentos sin lanzar excepción
+    raise last_exception or ConnectionError(
+        f"No se pudo conectar con {url} tras {MAX_RETRIES} intentos"
+    )
 
 
 def _transformar_fecha_larga(fecha_texto: str) -> str:
@@ -370,25 +453,50 @@ def scrape_otras_monedas() -> dict:
 
     logger.info("Enlace del Excel encontrado: %s", excel_link)
 
-    # ── Paso 2: Descargar el archivo en memoria ──
-    try:
-        response = requests.get(
-            excel_link, headers=HEADERS, timeout=REQUEST_TIMEOUT
-        )
-    except requests.exceptions.Timeout:
-        raise TimeoutError(
-            f"Timeout al descargar el Excel desde {excel_link} "
-            f"(>{REQUEST_TIMEOUT}s)"
-        )
-    except requests.exceptions.RequestException as exc:
-        raise ConnectionError(
-            f"Error al descargar el Excel desde {excel_link}: {exc}"
-        ) from exc
+    # ── Paso 2: Descargar el archivo en memoria (con reintentos) ──
+    session = _create_session()
+    response = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            logger.info(
+                "Descargando Excel (intento %d/%d): %s",
+                attempt, MAX_RETRIES, excel_link,
+            )
+            response = session.get(excel_link, timeout=REQUEST_TIMEOUT)
+            if response.status_code == 200:
+                break
+            if response.status_code in (403, 503) and attempt < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                logger.warning(
+                    "HTTP %d al descargar Excel — Reintentando en %ds",
+                    response.status_code, delay,
+                )
+                time.sleep(delay)
+                continue
+        except requests.exceptions.Timeout:
+            if attempt < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                logger.warning("Timeout descargando Excel — Reintentando en %ds", delay)
+                time.sleep(delay)
+                continue
+            raise TimeoutError(
+                f"Timeout al descargar el Excel desde {excel_link} "
+                f"(>{REQUEST_TIMEOUT}s)"
+            )
+        except requests.exceptions.RequestException as exc:
+            if attempt < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                logger.warning("Error descargando Excel — Reintentando en %ds", delay)
+                time.sleep(delay)
+                continue
+            raise ConnectionError(
+                f"Error al descargar el Excel desde {excel_link}: {exc}"
+            ) from exc
 
-    if response.status_code != 200:
+    if response is None or response.status_code != 200:
         raise ValueError(
-            f"Respuesta HTTP {response.status_code} al descargar el Excel "
-            f"desde {excel_link}"
+            f"No se pudo descargar el Excel desde {excel_link} "
+            f"tras {MAX_RETRIES} intentos"
         )
 
     excel_bytes = io.BytesIO(response.content)
