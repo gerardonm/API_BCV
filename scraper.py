@@ -74,6 +74,12 @@ MESES_ES = {
 # Funciones auxiliares
 # ──────────────────────────────────────────────
 
+import random
+
+def _generate_random_venezuelan_ip():
+    """Genera una IP falsa simulada del rango de CANTV para engañar cachés."""
+    return f"190.202.{random.randint(1, 254)}.{random.randint(1, 254)}"
+
 def _create_session() -> requests.Session:
     """
     Crea una sesión HTTP que persiste cookies entre peticiones.
@@ -82,7 +88,17 @@ def _create_session() -> requests.Session:
     visita se reenvíen en peticiones subsiguientes.
     """
     session = requests.Session()
-    session.headers.update(HEADERS)
+    # Generar una IP local venezolana para tratar de romper el caché por geolocalización
+    fake_ip = _generate_random_venezuelan_ip()
+    dynamic_headers = HEADERS.copy()
+    dynamic_headers["X-Forwarded-For"] = fake_ip
+    dynamic_headers["X-Real-IP"] = fake_ip
+    # Variar ligeramente el User-Agent para romper heurísticas de caché estrictas
+    dynamic_headers["User-Agent"] = dynamic_headers["User-Agent"].replace(
+        "125.0.0.0", f"125.0.{random.randint(100, 999)}.{random.randint(10, 99)}"
+    )
+    
+    session.headers.update(dynamic_headers)
     return session
 
 
