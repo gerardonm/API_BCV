@@ -93,6 +93,8 @@ def _fetch_page(url: str) -> BeautifulSoup:
     Implementa una estrategia de backoff exponencial para manejar
     bloqueos temporales del firewall del BCV (Imperva/Incapsula) y
     errores de conexión desde servidores en la nube.
+    
+    Añade un parámetro dinámico para romper el caché perimetral.
 
     Args:
         url: URL de la página a descargar.
@@ -107,13 +109,18 @@ def _fetch_page(url: str) -> BeautifulSoup:
     """
     session = _create_session()
     last_exception = None
+    
+    # ── Forzar Bypass de Caché CDN/Firewall ──
+    # Se agrega un timestamp único a la URL para obligar al BCV a servir data fresca.
+    sep = "&" if "?" in url else "?"
+    cache_busting_url = f"{url}{sep}nocache={int(time.time())}"
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             logger.info(
-                "Intento %d/%d — Conectando a %s", attempt, MAX_RETRIES, url
+                "Intento %d/%d — Conectando a %s", attempt, MAX_RETRIES, cache_busting_url
             )
-            response = session.get(url, timeout=REQUEST_TIMEOUT)
+            response = session.get(cache_busting_url, timeout=REQUEST_TIMEOUT)
 
             if response.status_code == 200:
                 logger.info("Conexión exitosa a %s (intento %d)", url, attempt)
